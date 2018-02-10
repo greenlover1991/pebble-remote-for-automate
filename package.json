@@ -1,0 +1,27 @@
+{
+    "author": "greenlover1991@gmail.com",
+    "dependencies": {},
+    "keywords": [],
+    "name": "remote-for-automate",
+    "pebble": {
+        "displayName": "Remote for Automate",
+        "enableMultiJS": true,
+        "messageKeys": [],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk",
+            "diorite"
+        ],
+        "uuid": "666d61ed-2dcd-4435-a24b-ddc12d5bb3c5",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
