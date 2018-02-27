@@ -6,16 +6,20 @@
     "pebble": {
         "displayName": "Remote for Automate",
         "enableMultiJS": true,
-        "messageKeys": [],
+        "messageKeys": [
+            "JS_READY",
+            "REQ_CODE",
+            "REQ_PARAMS",
+            "id",
+            "name",
+            "description"
+        ],
         "projectType": "native",
         "resources": {
             "media": []
         },
         "sdkVersion": "3",
         "targetPlatforms": [
-            "aplite",
-            "basalt",
-            "chalk",
             "diorite"
         ],
         "uuid": "666d61ed-2dcd-4435-a24b-ddc12d5bb3c5",
