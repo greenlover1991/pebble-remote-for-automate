@@ -29,9 +29,9 @@ static void free_flows() {
 
 void log_tuple(Tuple* tuple) {
   if (tuple->type == TUPLE_CSTRING) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d value: %s", tuple->key, tuple->value->cstring);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d value: %s", (int) tuple->key, tuple->value->cstring);
   } else {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d value: %d", tuple->key, tuple->value->int32);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d value: %d", (int) tuple->key, (int) tuple->value->int32);
   }
 }
 
@@ -58,11 +58,13 @@ static uint16_t get_num_rows(struct MenuLayer* menu_layer, uint16_t section_inde
 
 static void draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *callback_context) {
   Flow selected = s_flows[cell_index->row];
-  menu_cell_basic_draw(ctx, cell_layer, selected.id, selected.description, NULL);
+  menu_cell_basic_draw(ctx, cell_layer, selected.name, selected.description, NULL);
 }
 
 static void select_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
   // FIXME sgo send app message to start flow
+  Flow flow = s_flows[cell_index->row];
+  comms_send_params(REQ_TRIGGER_FLOW, flow.id);
 }
 
 static void refresh_menu_layer() {

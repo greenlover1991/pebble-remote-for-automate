@@ -16,13 +16,20 @@ bool comms_is_js_ready() {
   return s_js_ready;
 }
 
-void comms_send(char* request_code) {
+void comms_send_params(char* request_code, char* request_params) {
   DictionaryIterator *outbox;
   app_message_outbox_begin(&outbox);
   // Send the app message
   dict_write_cstring(outbox, MESSAGE_KEY_REQ_CODE, request_code);
-
+  if (request_params != NULL) {
+    dict_write_cstring(outbox, MESSAGE_KEY_REQ_PARAMS, request_params);  
+  }
+  
   app_message_outbox_send();
+}
+
+void comms_send(char* request_code) {
+  comms_send_params(request_code, NULL);
 }
 
 char *translate_error(AppMessageResult result) {
