@@ -1,11 +1,24 @@
 #include <pebble.h>
 #include "utils/comms.h"
 
+
+/* Flow xtra actions */
+typedef struct Action {
+  char *name;
+  char *payload_on_click;
+  bool input_payload;
+  struct Action* child_actions;
+  int child_actions_count;
+} Action;
+
+
 /* Flow structure */
 typedef struct {
   char *id;
   char *name;
-  char *description;
+  bool is_running;
+  Action* actions;
+  int action_count;
 } Flow;
 
 /* Views */
@@ -18,12 +31,30 @@ static bool s_bool_receiving;
 static Flow* s_flows;
 static int s_flow_index;
 
+
+// method declarations
+static void free_actions(Action* actions, int count);
+
+
+static void free_action(Action action) {
+  free_actions(action.child_actions, action.child_actions_count);
+  free(action.name);
+  free(action.payload_on_click);
+}
+
+static void free_actions(Action* actions, int count) {
+  int i;
+  for (i = 0; i < count; i++) {
+    free_action(actions[i]);
+  }
+}
+
 static void free_flows() {
   int i;
   for (i = 0; i < s_flow_index; i++) {
     free(s_flows[i].id);
     free(s_flows[i].name);
-    free(s_flows[i].description);
+    free_actions(s_flows[i].actions, s_flows[i].action_count);
   }
   free(s_flows);
 }
@@ -46,11 +77,22 @@ void log_dict(DictionaryIterator* iter) {
   }
 }
 
+/* Utility method: duplicates string */
 static char* strdup(char* from) {
   size_t len_from = strlen(from) + 1;
   char* result = malloc(len_from);
   strncpy(result, from, len_from);
   return result;
+}
+
+/* Utility method: construct flow from app message */
+static Flow construct_flow(DictionaryIterator *iter) {
+  Flow flow;
+  flow.id = strdup(dict_find(iter, MESSAGE_KEY_id)->value->cstring);
+  flow.name = strdup(dict_find(iter, MESSAGE_KEY_name)->value->cstring);
+  flow.is_running = dict_find(iter, MESSAGE_KEY_is_running)->value->int32 == 1;
+  flow.action_count = 0;
+  return flow;
 }
 
 static uint16_t get_num_rows(struct MenuLayer* menu_layer, uint16_t section_index, void *callback_context) {
@@ -59,7 +101,7 @@ static uint16_t get_num_rows(struct MenuLayer* menu_layer, uint16_t section_inde
 
 static void draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *callback_context) {
   Flow selected = s_flows[cell_index->row];
-  menu_cell_basic_draw(ctx, cell_layer, selected.name, selected.description, NULL);
+  menu_cell_basic_draw(ctx, cell_layer, selected.name, selected.is_running ? "Running" : "Stopped", NULL);
 }
 
 static void select_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
@@ -98,6 +140,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
         s_bool_receiving = false;
         refresh_menu_layer();
       } else {
+        free_flows(); // recycle data
         s_bool_receiving = true;
         s_flow_index = 0;
         s_flows =  malloc(item_length * sizeof(Flow));
@@ -105,11 +148,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
       
     // construct items if still receiving
     } else if (s_bool_receiving) {
-      Flow flow;
-      flow.id = strdup(dict_find(iter, MESSAGE_KEY_id)->value->cstring);
-      flow.name = strdup(dict_find(iter, MESSAGE_KEY_name)->value->cstring);
-      flow.description = strdup(dict_find(iter, MESSAGE_KEY_description)->value->cstring);
-      s_flows[s_flow_index] = flow;
+      s_flows[s_flow_index] = construct_flow(iter);
 
       s_flow_index++;
     }

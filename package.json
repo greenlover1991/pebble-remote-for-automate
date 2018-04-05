@@ -12,7 +12,7 @@
             "REQ_PARAMS",
             "id",
             "name",
-            "description"
+            "is_running"
         ],
         "projectType": "native",
         "resources": {

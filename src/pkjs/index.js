@@ -1,5 +1,14 @@
 const REQ_MAIN_LIST = "REQ_MAIN_LIST";
 const REQ_MAIN_LIST_END = -1;
+const REQ_TRIGGER_FLOW = "REQ_TRIGGER_FLOW";
+
+var flows = [
+    {"id": "item1", "name": "steve1", "is_running": 1},
+    {"id": "item2", "name": "steve2", "is_running": 0},
+    {"id": "item3", "name": "steve3", "is_running": 0},
+    {"id": "item4", "name": "steve4", "is_running": 1},
+    {"id": "item5", "name": "steve5", "is_running": 0}
+  ];
 
 //  APP messages
 Pebble.addEventListener('ready',
@@ -10,13 +19,15 @@ Pebble.addEventListener('ready',
   }
 );
 
+// EMULATOR use only
 Pebble.addEventListener('appmessage',
   function(message) {
     console.log('App message received: ' + JSON.stringify(message));
     
     // process app requests
-    var mapCodeToFn = [];
+    var mapCodeToFn = {};
     mapCodeToFn[REQ_MAIN_LIST] = sendMainList;
+    mapCodeToFn[REQ_TRIGGER_FLOW] = triggerFlow;
     
     var reqCode = message.payload.REQ_CODE;
     if (reqCode in mapCodeToFn) {
@@ -28,15 +39,6 @@ Pebble.addEventListener('appmessage',
 );
 
 function sendMainList(message) {
-  // FIXME receive from automate
-//   var flows = message.payload.FLOWS;
-  var flows = [
-    {"id": "item1", "name": "steve1", "description": "sample description1"},
-    {"id": "item2", "name": "steve2", "description": "sample description2"},
-    {"id": "item3", "name": "steve3", "description": "sample description3"},
-    {"id": "item4", "name": "steve4", "description": "sample description4"},
-    {"id": "item5", "name": "steve5", "description": "sample description5"}
-  ];
   console.log("Got main list from phone. Start sending items: " + flows.length);
   
   Pebble.sendAppMessage({
@@ -66,6 +68,17 @@ function sendNextItem(items, index, fnLastItem) {
       }
     }
   });
+}
+
+function triggerFlow(message) {
+  var id = message.payload.REQ_PARAMS;
+  for (var i = 0; i < flows.length; i++) {
+    var flow = flows[i];
+    if (flow.id === id) {
+      flow.is_running = (flow.is_running + 1) % 2;
+      sendMainList();
+    }
+  }
 }
 
 // function sendAppMsg(reqCode, httpCode, msg, obj) {
