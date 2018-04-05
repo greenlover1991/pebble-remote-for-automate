@@ -10,6 +10,7 @@ typedef struct {
 
 /* Views */
 static Window* s_window;
+static StatusBarLayer* s_status_bar;
 static MenuLayer* s_menu_layer;
 
 /* States */
@@ -116,9 +117,17 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
 }
 
 static void window_load(Window* window) {
-  // add menu layer
   Layer* window_layer = window_get_root_layer(window);
-  s_menu_layer = menu_layer_create(layer_get_bounds(window_layer));
+  GRect root_bounds = layer_get_bounds(window_layer);
+  
+  // add the StatusBarLayer
+  s_status_bar = status_bar_layer_create();
+  status_bar_layer_set_colors(s_status_bar, GColorWhite, GColorBlack);
+  status_bar_layer_set_separator_mode(s_status_bar, StatusBarLayerSeparatorModeDotted);
+  layer_add_child(window_layer, status_bar_layer_get_layer(s_status_bar));
+  
+  // add menu layer
+  s_menu_layer = menu_layer_create(GRect(0, STATUS_BAR_LAYER_HEIGHT, root_bounds.size.w, root_bounds.size.h));
   menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks) {
     .get_num_rows = get_num_rows,
     .draw_row = draw_row,
@@ -134,6 +143,7 @@ static void window_load(Window* window) {
 static void window_unload(Window* window) {
   comms_deinit();
   menu_layer_destroy(s_menu_layer);
+  status_bar_layer_destroy(s_status_bar);
   free_flows();
 }
 
