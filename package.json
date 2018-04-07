@@ -18,7 +18,8 @@
             "choice_payloads",
             "choice_count",
             "is_textual_payload",
-            "is_mandatory_payload"
+            "is_mandatory_payload",
+            "REQ_PAYLOAD"
         ],
         "projectType": "native",
         "resources": {

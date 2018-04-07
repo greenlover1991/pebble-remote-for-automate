@@ -1,6 +1,11 @@
 #include <pebble.h>
 #include "utils/comms.h"
 
+/* Action click data */
+typedef struct {
+  char *req_code;
+  char *payload;
+} ActionContext;
 
 /* Flow structure */
 typedef struct {
@@ -34,21 +39,16 @@ static int s_flow_index;
 static void free_flows() {
   int i, j;
   for (i = 0; i < s_flow_index; i++) {
-    Flow flow = s_flows[i];
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "freeing flow id and name");
-    free(flow.id);
-    free(flow.name);
-    
+    Flow flow = s_flows[i];    
     for (j = 0; j < flow.choice_count;  j++) {
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "freeing choice labels and payload");
       free(flow.choice_labels[j]);
       free(flow.choice_payloads[j]);
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "freeing choice pointers");
-      free(flow.choice_labels);
-      free(flow.choice_payloads);
     }
+    free(flow.id);
+    free(flow.name);
+    free(flow.choice_labels);
+    free(flow.choice_payloads);
   }
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "freeing flows");
   free(s_flows);
 }
 
@@ -91,13 +91,15 @@ static char *strsep(char **stringp, const char *delim) {
 }
 
 static char** from_csv(char **strp, int count) {
-  char** result = malloc(sizeof(char**));
-  char* token;
+  char** result = malloc(count * sizeof(char*));
+  char *dup, *tofree, *token;
+  tofree = dup =  strdup(*strp);
   int i = 0;
-  while ((token = strsep(strp, ",")) != NULL) {
+  while ((token = strsep(&dup, ",")) != NULL) {
     result[i] = strdup(token);
     i++;
   }
+  free(tofree);
 
   return result;
 }
@@ -134,24 +136,49 @@ static Flow construct_flow(DictionaryIterator *iter) {
   return flow;
 }
 
-
-static void action_performed(ActionMenu *action_menu, const ActionMenuItem *action, void *context) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "ACTION performed");
-  // FIXME call this in on close instead
-  action_menu_hierarchy_destroy(action_menu_get_root_level(action_menu), NULL, NULL);
+static void free_action_context(ActionContext* ptr) {
+  free(ptr->req_code);
+  free(ptr->payload);
+  free(ptr);
 }
 
-static void add_choices_level(ActionMenuLevel* parent, Flow flow) {
-  ActionMenuLevel* level = action_menu_level_create(flow.choice_count);
-  if (flow.is_grid) {
-    action_menu_level_set_display_mode(level, ActionMenuLevelDisplayModeThin);  
+static ActionContext* construct_action_context(char* req_code, char* payload) {
+  ActionContext* ptr = malloc(sizeof(ActionContext));
+  ptr->req_code = strdup(req_code);
+  if (payload != NULL) {
+    ptr->payload = strdup(payload);  
+  }
+  return ptr;
+}
+
+static void action_performed(ActionMenu *action_menu, const ActionMenuItem *action, void *context) {
+  Flow* flow = (Flow*) action_menu_get_context(action_menu);
+  ActionContext* ctx = (ActionContext*) action_menu_item_get_action_data(action);
+  comms_send_params_payload(ctx->req_code, flow->id, ctx->payload);
+}
+
+static void on_each_action_menu_item(const ActionMenuItem *item, void *context) {
+  ActionContext* ctx = (ActionContext*) action_menu_item_get_action_data(item);
+  if (ctx != NULL) {
+    free_action_context(ctx);  
+  }
+}
+
+static void action_menu_closed(ActionMenu *menu, const ActionMenuItem *performed_action, void *context) {
+  action_menu_hierarchy_destroy(action_menu_get_root_level(menu), on_each_action_menu_item, NULL);
+}
+
+static void add_choices_level(ActionMenuLevel* parent, Flow* flow) {
+  ActionMenuLevel* level = action_menu_level_create(flow->choice_count);
+  if (flow->is_grid) {
+    action_menu_level_set_display_mode(level, ActionMenuLevelDisplayModeThin);
   }
   
   int i;
-  for (i = 0; i < flow.choice_count; i++) {
-    char* label = flow.choice_labels[i];
-    char* payload = flow.choice_payloads[i];
-    action_menu_level_add_action(level, label, action_performed, payload);
+  for (i = 0; i < flow->choice_count; i++) {
+    char* label = flow->choice_labels[i];
+    char* payload = flow->choice_payloads[i];
+    action_menu_level_add_action(level, label, action_performed, construct_action_context(REQ_TRIGGER_FLOW, payload));
   }
   action_menu_level_add_child(parent, level, "Options");
 }
@@ -164,26 +191,24 @@ static void add_textual_payload_actions(ActionMenuLevel* parent) {
   action_menu_level_add_action(parent, "T3 input", action_performed, NULL);
 }
 
-static void start_action_menu(Flow flow) {
+static void start_action_menu(Flow* flow) {
   int root_count = 0;
-  bool supports_mic = true; // FIXME
-  if (!flow.is_mandatory_payload) root_count++;
-  if (flow.is_running) root_count++;
-  if (flow.choice_count > 0) root_count++;
-  if (flow.is_textual_payload) root_count += (supports_mic ? 2 : 1);
+  bool supports_mic = true; // FIXME support mic
+  if (!flow->is_mandatory_payload) root_count++;
+  root_count++;
+  if (flow->choice_count > 0) root_count++;
+  if (flow->is_textual_payload) root_count += (supports_mic ? 2 : 1);
   
-  // FIXME destroy root level in close
   ActionMenuLevel* root_level = action_menu_level_create(root_count);
-  if (flow.choice_count > 0) add_choices_level(root_level, flow);
-  if (flow.is_textual_payload) add_textual_payload_actions(root_level);
+  if (!flow->is_mandatory_payload) action_menu_level_add_action(root_level, "Start", action_performed, construct_action_context(REQ_TRIGGER_FLOW, NULL));
+  action_menu_level_add_action(root_level, "Stop", action_performed, construct_action_context(REQ_STOP_FLOW, NULL));
+  if (flow->choice_count > 0) add_choices_level(root_level, flow);
+  if (flow->is_textual_payload) add_textual_payload_actions(root_level);
   
   ActionMenuConfig config = (ActionMenuConfig){
     .root_level = root_level,
-    .context = NULL,
-    //.colors = (),
-    .will_close = NULL, // FIXME
-    .did_close = NULL, // FIXME
-    .align = ActionMenuAlignCenter
+    .did_close = action_menu_closed,
+    .context = flow
   };
   action_menu_open(&config);
 }
@@ -198,9 +223,7 @@ static void draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_ind
 }
 
 static void select_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
-  Flow flow = s_flows[cell_index->row];
-//   comms_send_params(REQ_TRIGGER_FLOW, flow.id);
-  
+  Flow* flow = &s_flows[cell_index->row];
   start_action_menu(flow);
 }
 
@@ -276,7 +299,6 @@ static void window_unload(Window* window) {
   comms_deinit();
   menu_layer_destroy(s_menu_layer);
   status_bar_layer_destroy(s_status_bar);
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "free flows()");
   free_flows();
 }
 

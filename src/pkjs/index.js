@@ -3,20 +3,20 @@ const REQ_MAIN_LIST_END = -1;
 const REQ_TRIGGER_FLOW = "REQ_TRIGGER_FLOW";
 
 var flows = [
-//     {
-//       "id": "item1", "name": "steve1", "is_running": 1, 
-//       "is_grid": 1, "choice_count": 4, 
-//       "choice_labels": "A,B,C,D", 
-//       "choice_payloads": "1,2,3,4",
-//       "is_textual_payload": 1
-//     },
-//     {
-//       "id": "item2", "name": "steve2", "is_running": 0,
-//       "choice_count": 3, 
-//       "choice_labels": "B,C,D", 
-//       "choice_payloads": "2,3,4",
-//       "is_mandatory_payload": 1
-//     },
+    {
+      "id": "item1", "name": "steve1", "is_running": 1, 
+      "is_grid": 1, "choice_count": 4, 
+      "choice_labels": "A,B,C,D", 
+      "choice_payloads": "1,2,3,4",
+      "is_textual_payload": 1
+    },
+    {
+      "id": "item2", "name": "steve2", "is_running": 0,
+      "choice_count": 3, 
+      "choice_labels": "B,C,D", 
+      "choice_payloads": "2,3,4",
+      "is_mandatory_payload": 1
+    },
     {"id": "item3", "name": "steve3", "is_running": 0},
     {"id": "item4", "name": "steve4", "is_running": 1, "is_textual_payload": 1},
     {"id": "item5", "name": "steve5", "is_running": 0}
