@@ -16,7 +16,7 @@ bool comms_is_js_ready() {
   return s_js_ready;
 }
 
-void comms_send_params(char* request_code, char* request_params) {
+void comms_send_params_payload(char* request_code, char* request_params, char* payload) {
   DictionaryIterator *outbox;
   app_message_outbox_begin(&outbox);
   // Send the app message
@@ -24,8 +24,15 @@ void comms_send_params(char* request_code, char* request_params) {
   if (request_params != NULL) {
     dict_write_cstring(outbox, MESSAGE_KEY_REQ_PARAMS, request_params);  
   }
+  if (payload != NULL) {
+    dict_write_cstring(outbox, MESSAGE_KEY_REQ_PAYLOAD, payload);  
+  }
   
   app_message_outbox_send();
+}
+
+void comms_send_params(char* request_code, char* request_params) {
+  comms_send_params_payload(request_code, request_params, NULL);
 }
 
 void comms_send(char* request_code) {

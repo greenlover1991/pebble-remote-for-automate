@@ -1,24 +1,29 @@
 #include <pebble.h>
 #include "utils/comms.h"
 
-
-/* Flow xtra actions */
-typedef struct Action {
-  char *name;
-  char *payload_on_click;
-  bool input_payload;
-  struct Action* child_actions;
-  int child_actions_count;
-} Action;
-
+/* Action click data */
+typedef struct {
+  char *req_code;
+  char *payload;
+} ActionContext;
 
 /* Flow structure */
 typedef struct {
   char *id;
   char *name;
   bool is_running;
-  Action* actions;
-  int action_count;
+  
+  // payloads:
+  bool is_mandatory_payload;
+  
+  // choice payloads
+  bool is_grid;
+  int choice_count;  
+  char** choice_labels;
+  char** choice_payloads;
+  
+  // OR freetext payload
+  bool is_textual_payload;
 } Flow;
 
 /* Views */
@@ -31,39 +36,27 @@ static bool s_bool_receiving;
 static Flow* s_flows;
 static int s_flow_index;
 
-
-// method declarations
-static void free_actions(Action* actions, int count);
-
-
-static void free_action(Action action) {
-  free_actions(action.child_actions, action.child_actions_count);
-  free(action.name);
-  free(action.payload_on_click);
-}
-
-static void free_actions(Action* actions, int count) {
-  int i;
-  for (i = 0; i < count; i++) {
-    free_action(actions[i]);
-  }
-}
-
 static void free_flows() {
-  int i;
+  int i, j;
   for (i = 0; i < s_flow_index; i++) {
-    free(s_flows[i].id);
-    free(s_flows[i].name);
-    free_actions(s_flows[i].actions, s_flows[i].action_count);
+    Flow flow = s_flows[i];    
+    for (j = 0; j < flow.choice_count;  j++) {
+      free(flow.choice_labels[j]);
+      free(flow.choice_payloads[j]);
+    }
+    free(flow.id);
+    free(flow.name);
+    free(flow.choice_labels);
+    free(flow.choice_payloads);
   }
   free(s_flows);
 }
 
-void log_tuple(Tuple* tuple) {
+void log_tuple(Tuple* tuple) { 
   if (tuple->type == TUPLE_CSTRING) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d value: %s", (int) tuple->key, tuple->value->cstring);
   } else {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d value: %d", (int) tuple->key, (int) tuple->value->int32);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d int value: %d", (int) tuple->key, (int) tuple->value->int32);
   }
 }
 
@@ -85,14 +78,139 @@ static char* strdup(char* from) {
   return result;
 }
 
+/* Utility method: split string in a loop */
+static char *strsep(char **stringp, const char *delim) {
+  if (*stringp == NULL) { return NULL; }
+  char *token_start = *stringp;
+  *stringp = strpbrk(token_start, delim);
+  if (*stringp) {
+    **stringp = '\0';
+    (*stringp)++;
+  }
+  return token_start;
+}
+
+static char** from_csv(char **strp, int count) {
+  char** result = malloc(count * sizeof(char*));
+  char *dup, *tofree, *token;
+  tofree = dup =  strdup(*strp);
+  int i = 0;
+  while ((token = strsep(&dup, ",")) != NULL) {
+    result[i] = strdup(token);
+    i++;
+  }
+  free(tofree);
+
+  return result;
+}
+
 /* Utility method: construct flow from app message */
 static Flow construct_flow(DictionaryIterator *iter) {
   Flow flow;
   flow.id = strdup(dict_find(iter, MESSAGE_KEY_id)->value->cstring);
   flow.name = strdup(dict_find(iter, MESSAGE_KEY_name)->value->cstring);
   flow.is_running = dict_find(iter, MESSAGE_KEY_is_running)->value->int32 == 1;
-  flow.action_count = 0;
+  
+  // optional params:
+  Tuple* tuple;
+  tuple = dict_find(iter, MESSAGE_KEY_is_mandatory_payload);
+  flow.is_mandatory_payload = (tuple != NULL && tuple->value->int32 == 1);
+  
+  tuple = dict_find(iter, MESSAGE_KEY_is_grid);
+  flow.is_grid = (tuple != NULL && tuple->value->int32 == 1);
+  tuple = dict_find(iter, MESSAGE_KEY_choice_count);
+  flow.choice_count = tuple == NULL ? 0 : tuple->value->int32;
+  
+  char* str;
+  tuple = dict_find(iter, MESSAGE_KEY_choice_labels);
+  str = flow.choice_count > 0 ? tuple->value->cstring : NULL;
+  flow.choice_labels = flow.choice_count > 0 ? from_csv(&str, flow.choice_count) : NULL;
+    
+  tuple = dict_find(iter, MESSAGE_KEY_choice_payloads);
+  str = flow.choice_count > 0 ? tuple->value->cstring : NULL;
+  flow.choice_payloads = flow.choice_count > 0 ? from_csv(&str, flow.choice_count) : NULL;
+    
+  tuple = dict_find(iter, MESSAGE_KEY_is_textual_payload);
+  flow.is_textual_payload = (tuple != NULL && tuple->value->int32 == 1);
+  
   return flow;
+}
+
+static void free_action_context(ActionContext* ptr) {
+  free(ptr->req_code);
+  free(ptr->payload);
+  free(ptr);
+}
+
+static ActionContext* construct_action_context(char* req_code, char* payload) {
+  ActionContext* ptr = malloc(sizeof(ActionContext));
+  ptr->req_code = strdup(req_code);
+  if (payload != NULL) {
+    ptr->payload = strdup(payload);  
+  }
+  return ptr;
+}
+
+static void action_performed(ActionMenu *action_menu, const ActionMenuItem *action, void *context) {
+  Flow* flow = (Flow*) action_menu_get_context(action_menu);
+  ActionContext* ctx = (ActionContext*) action_menu_item_get_action_data(action);
+  comms_send_params_payload(ctx->req_code, flow->id, ctx->payload);
+}
+
+static void on_each_action_menu_item(const ActionMenuItem *item, void *context) {
+  ActionContext* ctx = (ActionContext*) action_menu_item_get_action_data(item);
+  if (ctx != NULL) {
+    free_action_context(ctx);  
+  }
+}
+
+static void action_menu_closed(ActionMenu *menu, const ActionMenuItem *performed_action, void *context) {
+  action_menu_hierarchy_destroy(action_menu_get_root_level(menu), on_each_action_menu_item, NULL);
+}
+
+static void add_choices_level(ActionMenuLevel* parent, Flow* flow) {
+  ActionMenuLevel* level = action_menu_level_create(flow->choice_count);
+  if (flow->is_grid) {
+    action_menu_level_set_display_mode(level, ActionMenuLevelDisplayModeThin);
+  }
+  
+  int i;
+  for (i = 0; i < flow->choice_count; i++) {
+    char* label = flow->choice_labels[i];
+    char* payload = flow->choice_payloads[i];
+    action_menu_level_add_action(level, label, action_performed, construct_action_context(REQ_TRIGGER_FLOW, payload));
+  }
+  action_menu_level_add_child(parent, level, "Options");
+}
+
+static void add_textual_payload_actions(ActionMenuLevel* parent) {
+  // FIXME check has mic support and start dictation flow
+  action_menu_level_add_action(parent, "Voice", action_performed, NULL);
+  
+  // FIXME use T3 window
+  action_menu_level_add_action(parent, "T3 input", action_performed, NULL);
+}
+
+static void start_action_menu(Flow* flow) {
+  int root_count = 0;
+  bool supports_mic = true; // FIXME support mic
+  if (!flow->is_mandatory_payload) root_count++;
+  root_count++;
+  if (flow->choice_count > 0) root_count++;
+  if (flow->is_textual_payload) root_count += (supports_mic ? 2 : 1);
+  
+  ActionMenuLevel* root_level = action_menu_level_create(root_count);
+  if (!flow->is_mandatory_payload) action_menu_level_add_action(root_level, "Start", action_performed, construct_action_context(REQ_TRIGGER_FLOW, NULL));
+  action_menu_level_add_action(root_level, "Stop", action_performed, construct_action_context(REQ_STOP_FLOW, NULL));
+  if (flow->choice_count > 0) add_choices_level(root_level, flow);
+  if (flow->is_textual_payload) add_textual_payload_actions(root_level);
+  
+  ActionMenuConfig config = (ActionMenuConfig){
+    .root_level = root_level,
+    .did_close = action_menu_closed,
+    .context = flow
+  };
+  action_menu_open(&config);
 }
 
 static uint16_t get_num_rows(struct MenuLayer* menu_layer, uint16_t section_index, void *callback_context) {
@@ -104,14 +222,17 @@ static void draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_ind
   menu_cell_basic_draw(ctx, cell_layer, selected.name, selected.is_running ? "Running" : "Stopped", NULL);
 }
 
-static void select_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
-  // FIXME sgo send app message to start flow
-  Flow flow = s_flows[cell_index->row];
-  comms_send_params(REQ_TRIGGER_FLOW, flow.id);
-}
-
 static void refresh_menu_layer() {
   menu_layer_reload_data(s_menu_layer);
+}
+
+static void select_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  Flow* flow = &s_flows[cell_index->row];
+  start_action_menu(flow);
+}
+
+static void select_long_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  comms_send(REQ_MAIN_LIST);
 }
 
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
@@ -143,13 +264,12 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
         free_flows(); // recycle data
         s_bool_receiving = true;
         s_flow_index = 0;
-        s_flows =  malloc(item_length * sizeof(Flow));
+        s_flows = malloc(item_length * sizeof(Flow));
       }
       
     // construct items if still receiving
     } else if (s_bool_receiving) {
       s_flows[s_flow_index] = construct_flow(iter);
-
       s_flow_index++;
     }
   }
@@ -170,7 +290,8 @@ static void window_load(Window* window) {
   menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks) {
     .get_num_rows = get_num_rows,
     .draw_row = draw_row,
-    .select_click = select_click
+    .select_click = select_click,
+    .select_long_click = select_long_click
   });
   menu_layer_set_click_config_onto_window(s_menu_layer, s_window);
   layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
