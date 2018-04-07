@@ -52,11 +52,11 @@ static void free_flows() {
   free(s_flows);
 }
 
-void log_tuple(Tuple* tuple) {
+void log_tuple(Tuple* tuple) { 
   if (tuple->type == TUPLE_CSTRING) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d value: %s", (int) tuple->key, tuple->value->cstring);
   } else {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d value: %d", (int) tuple->key, (int) tuple->value->int32);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tuple key: %d int value: %d", (int) tuple->key, (int) tuple->value->int32);
   }
 }
 
@@ -264,7 +264,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
         free_flows(); // recycle data
         s_bool_receiving = true;
         s_flow_index = 0;
-        s_flows =  malloc(item_length * sizeof(Flow));
+        s_flows = malloc(item_length * sizeof(Flow));
       }
       
     // construct items if still receiving
