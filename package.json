@@ -12,7 +12,13 @@
             "REQ_PARAMS",
             "id",
             "name",
-            "is_running"
+            "is_running",
+            "is_grid",
+            "choice_labels",
+            "choice_payloads",
+            "choice_count",
+            "is_textual_payload",
+            "is_mandatory_payload"
         ],
         "projectType": "native",
         "resources": {
