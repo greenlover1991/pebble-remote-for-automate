@@ -222,13 +222,17 @@ static void draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_ind
   menu_cell_basic_draw(ctx, cell_layer, selected.name, selected.is_running ? "Running" : "Stopped", NULL);
 }
 
+static void refresh_menu_layer() {
+  menu_layer_reload_data(s_menu_layer);
+}
+
 static void select_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
   Flow* flow = &s_flows[cell_index->row];
   start_action_menu(flow);
 }
 
-static void refresh_menu_layer() {
-  menu_layer_reload_data(s_menu_layer);
+static void select_long_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  comms_send(REQ_MAIN_LIST);
 }
 
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
@@ -286,7 +290,8 @@ static void window_load(Window* window) {
   menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks) {
     .get_num_rows = get_num_rows,
     .draw_row = draw_row,
-    .select_click = select_click
+    .select_click = select_click,
+    .select_long_click = select_long_click
   });
   menu_layer_set_click_config_onto_window(s_menu_layer, s_window);
   layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
