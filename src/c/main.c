@@ -9,7 +9,7 @@ typedef struct {
 
 /* Flow structure */
 typedef struct {
-  char *id;
+  int id;
   char *name;
   bool is_running;
   
@@ -44,7 +44,6 @@ static void free_flows() {
       free(flow.choice_labels[j]);
       free(flow.choice_payloads[j]);
     }
-    free(flow.id);
     free(flow.name);
     free(flow.choice_labels);
     free(flow.choice_payloads);
@@ -107,7 +106,7 @@ static char** from_csv(char **strp, int count) {
 /* Utility method: construct flow from app message */
 static Flow construct_flow(DictionaryIterator *iter) {
   Flow flow;
-  flow.id = strdup(dict_find(iter, MESSAGE_KEY_id)->value->cstring);
+  flow.id = dict_find(iter, MESSAGE_KEY_id)->value->int32;
   flow.name = strdup(dict_find(iter, MESSAGE_KEY_name)->value->cstring);
   flow.is_running = dict_find(iter, MESSAGE_KEY_is_running)->value->int32 == 1;
   
@@ -145,7 +144,9 @@ static void free_action_context(ActionContext* ptr) {
 static ActionContext* construct_action_context(char* req_code, char* payload) {
   ActionContext* ptr = malloc(sizeof(ActionContext));
   ptr->req_code = strdup(req_code);
-  if (payload != NULL) {
+  if (payload == NULL) {
+    ptr->payload = NULL;
+  } else {
     ptr->payload = strdup(payload);  
   }
   return ptr;
@@ -154,8 +155,40 @@ static ActionContext* construct_action_context(char* req_code, char* payload) {
 static void action_performed(ActionMenu *action_menu, const ActionMenuItem *action, void *context) {
   Flow* flow = (Flow*) action_menu_get_context(action_menu);
   ActionContext* ctx = (ActionContext*) action_menu_item_get_action_data(action);
-  comms_send_params_payload(ctx->req_code, flow->id, ctx->payload);
+  static char flow_id[8];
+  snprintf(flow_id, sizeof(flow_id), "%d", flow->id);
+  comms_send_params_payload(ctx->req_code, flow_id, ctx->payload);
 }
+
+/**
+ * BEGIN Dictation methods
+ **/
+#if defined (PBL_MICROPHONE)
+static DictationSession *s_dictation_session;
+static int s_curr_dictation_flow_id;
+static char s_dictation_buffer[512];
+static void dictation_session_callback(DictationSession *session, DictationSessionStatus status,
+                                       char *transcription, void *context) {
+  if (status == DictationSessionStatusSuccess) {;
+    // TODO hardcoded Request code for now                          
+    static char flow_id[8];
+    snprintf(flow_id, sizeof(flow_id), "%d", s_curr_dictation_flow_id);
+    comms_send_params_payload(REQ_TRIGGER_FLOW, flow_id, transcription);
+  } else {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Dictation failed %d", (int) status);
+  }
+}
+
+// callback when Voice is selected
+static void action_mic_performed(ActionMenu *action_menu, const ActionMenuItem *action, void *context) {
+  Flow* flow = (Flow*) action_menu_get_context(action_menu);
+  s_curr_dictation_flow_id = flow->id;
+  dictation_session_start(s_dictation_session);  
+}
+#endif
+/**
+ * END Dictation methods
+ **/
 
 static void on_each_action_menu_item(const ActionMenuItem *item, void *context) {
   ActionContext* ctx = (ActionContext*) action_menu_item_get_action_data(item);
@@ -184,20 +217,21 @@ static void add_choices_level(ActionMenuLevel* parent, Flow* flow) {
 }
 
 static void add_textual_payload_actions(ActionMenuLevel* parent) {
-  // FIXME check has mic support and start dictation flow
-  action_menu_level_add_action(parent, "Voice", action_performed, NULL);
+  #if defined (PBL_MICROPHONE)
+    action_menu_level_add_action(parent, "Voice", action_mic_performed, NULL); 
+  #endif
   
   // FIXME use T3 window
-  action_menu_level_add_action(parent, "T3 input", action_performed, NULL);
+//   action_menu_level_add_action(parent, "T3 input", action_performed, NULL);
 }
 
 static void start_action_menu(Flow* flow) {
   int root_count = 0;
-  bool supports_mic = true; // FIXME support mic
+  bool supports_mic = PBL_IF_MICROPHONE_ELSE(true, false);
   if (!flow->is_mandatory_payload) root_count++;
   root_count++;
   if (flow->choice_count > 0) root_count++;
-  if (flow->is_textual_payload) root_count += (supports_mic ? 2 : 1);
+  if (flow->is_textual_payload) root_count += (supports_mic ? 1 : 0); // FIXME increment for T3 when implemented
   
   ActionMenuLevel* root_level = action_menu_level_create(root_count);
   if (!flow->is_mandatory_payload) action_menu_level_add_action(root_level, "Start", action_performed, construct_action_context(REQ_TRIGGER_FLOW, NULL));
@@ -315,9 +349,18 @@ static void init() {
   });
   
   window_stack_push(s_window, true);
+  
+  #if defined (PBL_MICROPHONE)
+    s_dictation_session = dictation_session_create(sizeof(s_dictation_buffer), 
+       dictation_session_callback, NULL);
+  #endif
 }
 
 static void deinit() {
+  #if defined (PBL_MICROPHONE)
+    dictation_session_destroy(s_dictation_session);
+  #endif
+
   window_destroy(s_window);
 }
 
