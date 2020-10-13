@@ -11,10 +11,9 @@ Simple list to trigger Llamalab's Automate flows from watch
   * [Triggering flow](https://llamalab.com/automate/community/flows/21540) = this flow listens for a button click from the Pebble watchapp, then starts the corresponding flow given the clicked flow ID.
   * Sample - [Turn on Flashlight](https://llamalab.com/automate/community/flows/35568) = on click from Pebble watchapp, turn on phone's flashlight.
   * Sample (requires Pebble 2 HR) - [Speak to watch & the phone talks back](https://llamalab.com/automate/community/flows/35569) = a sample triggering flow which allows user to talk to the Pebble and pass the spoken speech as payload to the flow. This example will simply wait for a spoken "Boy", then trigger the phone to speak back 
-3. After downloading the app and the flows, start the listing flow and the triggering flow. The listing flow will report to the pebble app the list of available flows that can be triggered. The triggering flow waits for button clicks from the pebble app.
-In the pebble app, on tap of the options, the triggering flow will reroute to the actual flow to be executed.
+3. After downloading the app and the flows, start the listing flow and the triggering flow. The listing flow will report to the pebble app the list of available flows that can be triggered. The triggering flow waits for button clicks from the pebble app. So both of the flows have to be kept running all the time. 
+In the pebble watch app, on tap of the options, the triggering flow will reroute to the actual flow to be executed.
 
 **Notes/disclaimer:**
-1. You may have to edit the listing flow to point to the correct flow ID of the downloaded triggering and sample flows.
-2. The free Automate app has a limit of 30 running blocks. So you may have to adjust the flow as well if the setup doesn't work. I'm currently a premium Automate user which removes the limit.
-
+1. The free Automate app has a limit of 30 running blocks. So you need to adjust the flow if the setup doesn't work. I'm currently a premium Automate user which removes the limit.
+2. I only tested the Dictation functionality using the original Pebble services, but I have not tested the Dictation services in Rebble, so the watch app might fail when using voice. 
